@@ -1,13 +1,13 @@
 /******************************************************************************
  * README                                                                     *
- * Authors: Wolfgang Richter and Ekaterina Taralova and Karl Naden            *
- * Contact: {wolf,etaralova,kbn}@cs.cmu.edu                                   *
+ * Authors: Megha Dey, Yu-Cheng Yu                                            *
+ * Contact: megha.dey@intel.com, yu-cheng.yu@intel.com                        *
  *                                                                            *
- * Description: This file contains the README for a perf counters interfacing *
- *              library                                                       *
+ * Description: This file contains the README for Branch Monitoring counters  *
+ *              interfacing library                                           *
  *                                                                            *
  *                                                                            *
- * Copyright (c) 2010 Wolfgang Richter and Ekaterina Taralova and Karl Naden. *
+ * Copyright (c) 2018 Intel Corporation                                       *
  *  Permission is granted to copy, distribute and/or modify this document     *
  *  under the terms of the GNU Free Documentation License, Version 1.3        *
  *  or any later version published by the Free Software Foundation;           *
@@ -22,40 +22,32 @@ Introduction            ..................................... [INTRO-1]
 Dependencies            ..................................... [DEPEN-2]
 Building                ..................................... [BUILD-3]
 Using the Library       ..................................... [USING-4]
-License                 ..................................... [LICEN-5]
+User provided inputs    ..................................... [INPUT-5]
+License                 ..................................... [LICEN-6]
 
 
 
 [INTRO-1] Introduction
 --------------------------------------------------------------------------------
-This document describes the libperf library implemented as an interface to a
-syscall introduced in a mature form into the Linux Kernel mainline in 2009. This
-interface was previously only usable via a binary tool called 'perf' included in
-Linux Kernel source distributions today.
+This document describes the libbm library implemented as an interface to the
+Branch Monitoring kernel driver.
 
-There are several key shortcomings of interfacing with the system call only
-through a controlled binary.  The first is that the granularity of tracing
-hardware performance counter registers and software tracepoints is at a whole
-binary level.  There is no method for tracing portions of code within the
-application if desired.  This is because there is no nice API exposed to
-userspace developers that can interface with this system call.  The second
-shortcoming is that the tool, although extensive, may not account for every
-possible use case for these counters and tracepoints.  Offering a
-non-restrictive API to userspace gives developers full power and freedom to
-implement any functionality desired.
-
-libperf closes this gap and provides an API for interfacing with the system
-call used by the perf tool.  This provides all of the power of the tool with
-the granularity of snippets of code.
-
-
-
+The Branch Monitoring driver monitors a given task for a possible ROP(Return
+Oriented Programming) attack. The user can set a threshold, window size and a
+maximum of 2 events (per task/per cpu). Once the threshold is reached, an
+interrupt is generated in the driver in which we write a sample and then a user
+polls on it, and read it to let the user know if an exploit may have occured.
+The user can then take appropriate action. Since 'perf' (a binary tool included
+in the Linux Kernel source) is mainly used to 'count' different events, the perf
+command line tool cannot be used to monitor branch monitoring events. libbm
+closes this gap and provides APIs for interfacing with the Branch monitoring
+driver.
 
 [DEPEN-2] Dependencies
 --------------------------------------------------------------------------------
-libperf depends only on having a modern Linux Kernel installed.
+libbm depends only on having a modern Linux Kernel installed.
 
-libperf is currently compatible with Linux Kernel version 2.6.32+.
+libbm is currently compatible with Linux Kernel version 2.6.32+.
 
 Do this on your system [uname -a]:
 
@@ -65,107 +57,103 @@ Do this on your system [uname -a]:
 
 Which tells us that the kernel we have installed is 2.6.32-25-generic.
 
-
-
-
 [BUILD-3] Building
 --------------------------------------------------------------------------------
-Building libperf is a snap because there are no dependencies!
+Building libbm a snap because there are no dependencies!
 
 Then just run ./configure and make as:
 
-     cd libperf
-     ./configure
-     make
-     sudo make install
-
-If you're a developer of libperf, there's one extra step:
-
-     cd libperf
+     cd libbm
      ./bootstrap.sh
      ./configure
      make
      sudo make install
 
-
-
-
 [USING-4] Using the Library
 --------------------------------------------------------------------------------
 Using the library is fairly simple.  Obtain a handle into the library using the
-'libperf_initialize' function.  This handle may be used in future library calls.
-'libperf_readcounter' is used to read a single 64 bit counter from the library.
-The available counters are defined in the 'enum libperf_tracepoint'.
-'libperf_enablecounter' and 'libperf_disablecounter' are used to enable and
-disable individual counters as desired.  There are two ways of shutting the
-library down cleanly:
+'libbm_initialize' function.  This handle may be used in future library calls.
+'libbm_enablecounter' and 'libbm_disablecounter' are used to enable and
+disable individual counters as desired. 'libbm_close' -- use this function to
+just shutdown.
 
-    (1) 'libperf_finalize' -- use this function to provide a log of all counters
-    (2) 'libperf_close' -- use this function to just shutdown without final logging
+If the pid value is -1, then the library will use the system call 'getpid' to
+obtain the process id of the current running process of execution. When 'cpu'
+is set to -1, it causes the libbm counters to count across all cpu's for a given
+process id. If cpu is set to >=0, then libbm counters count across all tasks
+scheduled on that cpu.
 
-'libperf_finalize' appends logs into a file named after the 'pid' value passed
-into 'libperf_initialize'.  If the pid value is -1, then the library will use
-the system call 'gettid' to obtain the thread id of the current running thread
-of execution (equivalent to the pid of a single-threaded application).  Also,
-setting the 'cpu' value to -1 when initializing causes the libperf counters to
-count across all cpu's for a given thread id.
-
-'libperf_getlogger' will give a file stream to write to.  This is the same log
-file used by the 'libperf_finalize' method and is unique per thread.
-
-'libperf_unit_test' performs a small test of the library, allocating a
-gigabyte of memory, touching each byte, and logging performance counters.
-
-Example using some of the functions in an example:
-
-     #include <inttypes.h> /* for PRIu64 definition */
-     #include <stdint.h>   /* for uint64_t */ 
-     #include <stdio.h>    /* for printf family */
-     #include <stdlib.h>   /* for EXIT_SUCCESS definition */
-     #include "libperf.h"  /* standard libperf include */
-
-     int main(int argc, char* argv[])
-     {
-          struct libperf_data* pd = libperf_initialize(-1,-1); /* init lib */
-          libperf_enablecounter(pd, LIBPERF_COUNT_HW_INSTRUCTIONS);
-                                                /* enable HW counter */
-          uint64_t counter = libperf_readcounter(pd,
-                                                 LIBPERF_COUNT_HW_INSTRUCTIONS);
-                                                /* obtain counter value */
-          libperf_disablecounter(pd, LIBPERF_COUNT_HW_INSTRUCTIONS);
-                                                /* disable HW counter */
-
-          fprintf(stdout, "counter read: %"PRIu64"\n", counter); /* printout */
-
-          FILE* log = libperf_getlogger(pd); /* get log file stream */
-          fprintf(log, "custom log message\n"); /* print a custom log message */
-
-          libperf_finalize(pd, 0); /* log all counter values */
-
-          return EXIT_SUCCESS; /* success exit value */
-     }
+Example using some of the functions in an example: libbm_example.c
 
 To compile the previous program the proper flags must be passed to 'gcc':
 
-     test@test:/tmp$ pkg-config --libs --cflags libperf
-     -I/usr/local/include/perf -I/usr/local/lib/perf/include  -L/usr/local/lib -lperf
+     export LD_LIBRARY_PATH=/usr/local/lib
+     gcc libbm_example.c -o test -L/usr/local/lib -lbm
 
-which tells us to do:
-
-     gcc -I/usr/local/include/perf -I/usr/local/lib/perf/include -L/usr/local/lib -lperf example.c
-
-
-
-
-[LICEN-5] License
+[INPUT-5] User provided inputs
 --------------------------------------------------------------------------------
-libperf is licensed under the GPLv2 because it includes GPLv2 licensed code from
+This library provides a simple interface to allow the user to specify the
+following user inputs to the underlying perf driver:
+
+Per-task inputs:
+1. LBR freeze:
+   Possible values are 0 or 1. When enabled(1), an LBR freeze is observed
+   on threshold trip
+
+2. Guest Disable:
+   Possible values are 0 or 1. When set to ‘1’, branch
+   monitoring feature is disabled when operating at VMX non-root operation.
+
+3. Window size:
+   Possible values range from 0 to 1023. This represents the number of
+   instructions to be executed before the event counters are reset.
+
+4. Window count select:
+   Possible values are:
+   0 = instructions retired
+   1 = branches retired
+   2 = returned instructions retired
+   3 = indirect branch instructions retired
+
+5. Count and mode:
+   Possible values are 0 or 1. When set to ‘1’, the overall event triggering
+   condition is true only if all enabled counter’s threshold conditions are
+   true. When ‘0’, the threshold tripping condition is true if either enabled
+   counter’s threshold is true. If a counter is not enabled, then it does not
+   factor into the AND’ing logic
+
+Per-event inputs:
+6. Threshold:
+   Values from 1 to 127 is supported. This sets the tipping points. After
+   'threshold' number of event hits, an ROP event trigeering condition is
+   generated.
+
+7. Mispredict counting behaviour:
+   Possible values are:
+   0 = mispredict events are counted in a window
+   1 = mispredict events are counted based on a consecutive occurrence.
+
+8. Event type:
+   Configures the type of event to be counted:
+   0-number of returns
+   1-call-return imbalance
+   2-number of return mispredicts
+   3-number of branch mispredicts
+   4-number of indirect branch mispredicts
+   5-number of far branches
+
+Each task can have a maximum of 2 branch monitoring events configured at any
+given time.
+
+[LICEN-6] License
+--------------------------------------------------------------------------------
+libbm is licensed under the GPLv2 because it includes GPLv2 licensed code from
 the perf tool and perf counters subsystem included in the Linux Kernel source
 tree.  You may find a copy of this license in the file 'gpl-2.0.txt'.  In
 addition, all source code contains a notice at the top with license details.
 
 What this means to you: if you release applications or libraries linking with or
-using code from libperf, either statically or dynamically, your applications or
+using code from libbm, either statically or dynamically, your applications or
 libraries must also be released under the terms of the GPLv2.  Source code must
 be made available and contain the proper copyright notices as described in the
 GPLv2.
@@ -178,5 +166,5 @@ See this official Free Software Foundation FAQ question as reference:
           Yes, because the program as it is actually run includes the
           library.
 
-All documentation for libperf is licensed under the GFDLv1.3 which is included
+All documentation for libbm is licensed under the GFDLv1.3 which is included
 in the file 'fdl-1.3.txt'.

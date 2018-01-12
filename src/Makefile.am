@@ -1,23 +1,17 @@
-lib_LTLIBRARIES = libperf.la
-check_PROGRAMS = test example benchmark
+lib_LTLIBRARIES = libbm.la
+check_PROGRAMS = test example
 
-EXTRA_DIST = libperf.h perf_event.h libperf_example.c libperf_test.c libperf_benchmark.c
+EXTRA_DIST = libbm.h perf_event.h libbm_example.c
 
-libperf_la_SOURCES = libperf.c
+libbm_la_SOURCES = libbm.c
 
-libperf_la_LDFLAGS = -version-info $(LIBPERF_SO_VERSION)
+libbm_la_LDFLAGS = -version-info $(LIBBM_SO_VERSION)
 
-include_HEADERS = libperf.h
+include_HEADERS = libbm.h
 
 pkgconfigdir = $(libdir)/pkgconfig
 
-pkgconfig_DATA = libperf.pc
+example_SOURCES = libbm_example.c
+example_LDADD = libbm.la
 
-test_SOURCES = libperf_test.c
-test_LDADD = libperf.la
-
-example_SOURCES = libperf_example.c
-example_LDADD = libperf.la
-
-benchmark_SOURCES = libperf_benchmark.c
-benchmark_LDADD = libperf.la
+pkgconfig_DATA = libbm.pc
